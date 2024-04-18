@@ -1,0 +1,61 @@
+drop view if exists ZBAS_BOM_VIEW 
+GO
+
+CREATE VIEW ZBAS_BOM_VIEW AS
+
+SELECT
+    [Plant],
+    [FERT_ID],
+    [Old Material nr Base Product],
+    [Description Finished Product],
+    SUM([Quantity]) OVER (PARTITION BY [FERT_ID]) AS 'Base Quantity',
+    [Unit of measure],
+    [Item Line],
+    [Old material nr Component],
+    [Unit],
+    [Description Component],
+    [Quantity]
+FROM (
+    SELECT
+        'P360' AS 'Plant',
+        [FERT_ID],
+        [ZBAS] AS 'Old Material nr Base Product',
+        [ZBAS_Description] AS 'Description Finished Product',
+        'KG' AS 'Unit of measure',
+        10 * ROW_NUMBER() OVER (PARTITION BY [FERT_ID] ORDER BY [FERT_ID]) AS 'Item Line',
+        CASE 
+            WHEN bom.[Unit of Measure Code] = 'MIX' THEN CAST([ZPMX] AS VARCHAR(MAX)) COLLATE SQL_Latin1_General_CP1_CI_AS
+            ELSE bom.[No_] COLLATE SQL_Latin1_General_CP1_CI_AS
+        END AS 'Old material nr Component',
+        'KG' AS 'Unit',
+        bom.[Description] AS 'Description Component',
+        CASE
+            WHEN bom.[Unit of Measure Code] = 'MIX' THEN zpmx.[Base Quantity] * bom.Quantity 
+            ELSE bom.[Quantity]
+        END AS 'Quantity'
+    FROM  
+        [NFF_NAV_LIVE].[dbo].[NFF_NAV_LIVE$Production BOM Line] AS bom
+    JOIN  
+        [BOM_translations] t ON t.[FERT_ID] COLLATE SQL_Latin1_General_CP1_CI_AS = bom.[Production BOM No_] COLLATE SQL_Latin1_General_CP1_CI_AS
+    JOIN  
+        [ZPMX_BOM_VIEW] zpmx 
+            ON zpmx.[Old material nr Premix or Semi-Manufactured Product] 
+            COLLATE SQL_Latin1_General_CP1_CI_AS = t.ZPMX COLLATE SQL_Latin1_General_CP1_CI_AS
+    WHERE 
+        (bom.No_ LIKE 'M%' OR bom.No_ LIKE '04%')
+--        AND t.[FERT_ID] = '00244'
+        AND zpmx.[Item Line] = 10
+    GROUP BY 
+        [FERT_ID],
+        [ZBAS],
+        [ZBAS_Description],
+        bom.[Quantity],
+        zpmx.[Base Quantity],
+        bom.[Unit of Measure Code],
+        [ZPMX],
+        [Description],
+        [No_]
+) AS subquery;
+
+go
+SELECT * FROM ZBAS_BOM_VIEW
